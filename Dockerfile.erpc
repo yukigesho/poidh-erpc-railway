@@ -1,10 +1,7 @@
 FROM ghcr.io/erpc/erpc:latest
 
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 COPY erpc.yaml /root/erpc.yaml
 # 4000 -> eRPC
 # 4001 -> Monitoring
 EXPOSE 4000 4001
-ENTRYPOINT ["/entrypoint.sh"]
-CMD []
+CMD ["/erpc-server"]
