@@ -25,7 +25,7 @@ COPY --from=erpc_fetcher /tmp/erpc/monitoring/prometheus/alert.rules     /etc/pr
 COPY --from=grafana /usr/share/grafana /usr/share/grafana
 COPY --from=grafana /etc/grafana       /etc/grafana
 COPY --from=erpc_fetcher /tmp/erpc/monitoring/grafana/grafana.ini                    /etc/grafana/grafana.ini
-COPY --from=erpc_fetcher /tmp/erpc/monitoring/grafana/datasources/prometheus.yml     /etc/grafana/provisioning/datasources/prometheus.yml
+COPY grafana/datasources/prometheus.yml /etc/grafana/provisioning/datasources/prometheus.yml
 COPY --from=erpc_fetcher /tmp/erpc/monitoring/grafana/dashboards/default.yml         /etc/grafana/provisioning/dashboards/default.yml
 COPY --from=erpc_fetcher /tmp/erpc/monitoring/grafana/dashboards/erpc.json           /etc/grafana/provisioning/dashboards/erpc.json
 
