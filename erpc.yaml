@@ -36,6 +36,9 @@ projects:
           successThresholdCapacity: 10
 
     upstreams:
+      - id: public-repo
+        endpoint: repository://evm-public-endpoints.erpc.cloud
+
       - id: alchemy-arbitrum
         group: fallback
         endpoint: ${ALCHEMY_ARBITRUM_URL}
