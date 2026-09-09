@@ -1,7 +1,7 @@
 # Public-first eRPC on Railway
 
-Arbitrum (`42161`), Base (`8453`), and Degen (`666666666`), with public
-repository RPCs first and Alchemy as the paid fallback. Pinned to eRPC `0.2.0`.
+Arbitrum (`42161`) and Base (`8453`), with public repository RPCs first and
+Alchemy as the paid fallback. Pinned to eRPC `0.2.0`.
 
 ## Deploy the RPC service
 
@@ -11,9 +11,7 @@ repository RPCs first and Alchemy as the paid fallback. Pinned to eRPC `0.2.0`.
    `ERPC_AUTH_SECRET` and one `ALCHEMY_API_KEY`. eRPC generates the correct
    chain-specific Alchemy URL automatically. Also create the private Redis
    service described in [Caching](#caching) and set `REDIS_URL` as a Railway
-   variable reference to its `REDIS_URL`. Confirm Degen support in your Alchemy
-   dashboard; if unsupported, remove `evm:666666666` from the Alchemy
-   provider's `onlyNetworks` list (Degen then remains public-only).
+   variable reference to its `REDIS_URL`.
 3. Set `PORT=4000`. For external clients, generate a public domain with target
    port **4000**. Do not expose the metrics port **4001** publicly.
 4. Set `GOMEMLIMIT` for your service allocation (the example assumes 512 MiB).
@@ -22,7 +20,7 @@ repository RPCs first and Alchemy as the paid fallback. Pinned to eRPC `0.2.0`.
 Clients in the same Railway environment can use
 `http://erpc.railway.internal:4000/main/evm/42161` (HTTP, not HTTPS).
 External clients use `https://YOUR-DOMAIN/main/evm/42161`.
-Aliases `/main/arbitrum`, `/main/base`, and `/main/degen` also work.
+Aliases `/main/arbitrum` and `/main/base` also work.
 
 ```sh
 curl "https://YOUR-DOMAIN/main/evm/42161" \

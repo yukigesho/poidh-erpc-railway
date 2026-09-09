@@ -114,7 +114,6 @@ projects:
         onlyNetworks:
           - evm:42161
           - evm:8453
-          - evm:666666666
         overrides:
           "*":
             tags: ["tier:public"]
@@ -127,7 +126,6 @@ projects:
         onlyNetworks:
           - evm:42161
           - evm:8453
-          - evm:666666666
         overrides:
           "*":
             tags: ["tier:paid", "provider:alchemy"]
@@ -149,10 +147,6 @@ projects:
         evm:
           chainId: 8453
         alias: base
-      - architecture: evm
-        evm:
-          chainId: 666666666
-        alias: degen
 
 # Alchemy Free tier: 300 CU/s and 30,000,000 base CUs/month.
 # Credit counting pools every method and every generated Alchemy upstream into
