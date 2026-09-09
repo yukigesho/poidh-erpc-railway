@@ -62,18 +62,18 @@ projects:
       selectionPolicy:
         evalInterval: 15s
         evalScope: network-method
-        # Keep BOTH tiers eligible: preferTag would remove paid upstreams
-        # while any public upstream remains, preventing immediate failover.
-        # Rank within each tier, but never let paid latency outrank public.
+        # Keep BOTH tiers eligible: preferTag would remove public fallbacks
+        # while Alchemy remains healthy, preventing immediate failover.
+        # Rank within each tier, but never let fallback latency outrank Alchemy.
         evalFunc: |
           (upstreams, ctx) => {
             const ranked = upstreams.removeCordoned()
               .sortByScore(PREFER_FASTEST);
-            const publicNodes = ranked.filter(
-              u => u.tags.includes('tier:public'));
-            const paidNodes = ranked.filter(
-              u => !u.tags.includes('tier:public'));
-            return publicNodes.concat(paidNodes);
+            const primaryNodes = ranked.filter(
+              u => !u.tags.includes('tier:fallback'));
+            const fallbackNodes = ranked.filter(
+              u => u.tags.includes('tier:fallback'));
+            return primaryNodes.concat(fallbackNodes);
           }
       failsafe:
         - matchMethod: "*"
@@ -85,7 +85,7 @@ projects:
             jitter: 100ms
             backoffFactor: 1.5
             backoffMaxDelay: 2s
-          # No speculative paid requests while a public call is in flight.
+          # No speculative second request while the primary call is in flight.
           hedge:
             maxCount: 0
 
@@ -116,7 +116,7 @@ projects:
           - evm:8453
         overrides:
           "*":
-            tags: ["tier:public"]
+            tags: ["tier:fallback", "provider:public"]
 
       # eRPC generates each chain's Alchemy URL from this single API key.
       - id: alchemy
@@ -128,7 +128,7 @@ projects:
           - evm:8453
         overrides:
           "*":
-            tags: ["tier:paid", "provider:alchemy"]
+            tags: ["tier:primary", "provider:alchemy"]
             rateLimitBudget: alchemy-free-tier
             # Consume Alchemy's vendor-provided CU estimate, not one token per
             # request, so expensive methods such as eth_getLogs cost more.

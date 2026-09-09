@@ -1,21 +1,28 @@
-# Public-first eRPC on Railway
+# Alchemy-first eRPC on Railway
 
-Arbitrum (`42161`) and Base (`8453`), with public repository RPCs first and
-Alchemy as the paid fallback. Pinned to eRPC `0.2.0`.
+Arbitrum (`42161`) and Base (`8453`), with Alchemy as the primary RPC provider
+and public repository RPCs as fallback. Pinned to eRPC `0.2.0`.
 
 ## Deploy the RPC service
 
-1. Connect this repository to a Railway service named **erpc**. The root
-   `railway.toml` selects `Dockerfile.erpc` and `/healthcheck` automatically.
-2. Copy the variables from `.env.example` into Railway Variables. Set a strong
-   `ERPC_AUTH_SECRET` and one `ALCHEMY_API_KEY`. eRPC generates the correct
-   chain-specific Alchemy URL automatically. Also create the private Redis
-   service described in [Caching](#caching) and set `REDIS_URL` as a Railway
-   variable reference to its `REDIS_URL`.
-3. Set `PORT=4000`. For external clients, generate a public domain with target
-   port **4000**. Do not expose the metrics port **4001** publicly.
-4. Set `GOMEMLIMIT` for your service allocation (the example assumes 512 MiB).
-   Start with one replica: rate-limit counters are per instance.
+1. Install Railway CLI `>=5.42.1`, authenticate, and link this directory to
+   the target Railway project/environment. Install the IaC dependency with
+   `npm ci`.
+2. In Railway, set the existing **erpc** service's `ERPC_AUTH_SECRET` and
+   `ALCHEMY_API_KEY`. IaC preserves these values during migration; it never
+   writes them to Git. Also create the environment-level shared secret
+   `GRAFANA_ADMIN_PASSWORD` before the first apply.
+3. **Migration only:** before planning, clear the existing service's Railway
+   **Config File path** setting. The deprecated `railway.toml` files have been
+   removed from this repository. Do not let Config as Code and IaC manage the
+   same service. For a larger existing project, run `railway config pull` first
+   and merge its imported settings before applying.
+4. Preview with `railway config plan`, carefully review it, then run
+   `railway config apply`. The single `.railway/railway.ts` file creates and
+   manages eRPC, Redis, Prometheus, Grafana, and their data volumes.
+5. Add a public domain in Railway for eRPC with target port **4000**. Do not
+   expose the metrics port **4001** publicly. Start with one eRPC replica:
+   rate-limit counters are per instance.
 
 Clients in the same Railway environment can use
 `http://erpc.railway.internal:4000/main/evm/42161` (HTTP, not HTTPS).
@@ -43,45 +50,24 @@ recent answers rather than immediately calling public RPCs or Alchemy:
 - unfinalized data: 15 seconds;
 - tip data (`eth_blockNumber`, gas price, fee history): 2 seconds.
 
-Create a Railway Redis service in the **same project/environment**, attach its
-persistent volume, and add this variable to the `erpc` service via Railway's
-variable-reference UI (do not expose Redis publicly):
-
-```text
-REDIS_URL=${{Redis.REDIS_URL}}
-```
-
-Replace `Redis` with the actual Railway Redis service name. The Redis URL is a
-secret and belongs in Railway Variables (or local `.env`), never in Git. The
-cache intentionally has expiry rather than permanent historical retention; set
-a Redis memory/eviction policy appropriate for its Railway plan and monitor its
-memory use. eRPC cache hits bypass upstream selection and paid rate limits.
+The IaC file creates a private Railway Redis service, its persistent storage,
+and the `REDIS_URL` reference for eRPC. Do not expose Redis publicly. The cache
+intentionally has expiry rather than permanent historical retention; monitor
+its memory use. eRPC cache hits bypass upstream selection and paid rate limits.
 
 ## Monitoring: separate Prometheus and Grafana services
 
-`metrics.enabled` exposes metrics; it does **not** deploy a dashboard by itself.
-Create these services in the same Railway project/environment:
+`metrics.enabled` exposes metrics. IaC creates the private Prometheus service
+with a persistent volume; it scrapes `erpc.railway.internal:4001` every 15
+seconds and retains seven days. If you rename the eRPC service, update
+`monitoring/prometheus.yml` and `.railway/railway.ts`.
 
-### Prometheus
+IaC also creates Grafana (`grafana/grafana:12.3.3`) with persistent storage.
+Add a Railway public domain targeting port **3000** only after setting the
+shared `GRAFANA_ADMIN_PASSWORD`; leave anonymous access disabled. The password
+initializes new storage, so changing it later requires Grafana's password reset
+procedure.
 
-- Connect this repository as a second service named **prometheus**.
-- Set its Railway Config File path to `/monitoring/railway.toml` (not the root
-  config), keeping the build root at the repository root.
-- Set `PORT=9090`; attach a persistent volume at `/prometheus`.
-- Keep it private: no public domain. The supplied config scrapes
-  `http://erpc.railway.internal:4001/metrics` every 15 seconds and retains 7 days.
-- If you rename the RPC service, update `monitoring/prometheus.yml`.
-- Check volume write permissions for the image's runtime user if startup fails.
-
-### Grafana
-
-- Create a third service from image `grafana/grafana:12.3.3`.
-- Set `PORT=3000`, `GF_SERVER_HTTP_ADDR=::`,
-  `GF_SECURITY_ADMIN_USER=admin`, and a strong `GF_SECURITY_ADMIN_PASSWORD`.
-  Leave anonymous access disabled. The admin password initializes new storage;
-  changing it later requires Grafana's password reset procedure.
-- Attach a volume at `/var/lib/grafana`; expose only port **3000** through a
-  Railway public domain. Set the Railway healthcheck path to `/api/health`.
 - In Grafana, add a Prometheus datasource with URL
   `http://prometheus.railway.internal:9090`.
 - Import the [eRPC dashboard JSON](https://raw.githubusercontent.com/erpc/erpc/0.2.0/monitoring/grafana/dashboards/erpc.json)
@@ -89,30 +75,29 @@ Create these services in the same Railway project/environment:
 - Verify `up{job="erpc"}` is `1` in Grafana Explore, then send RPC traffic and
   inspect per-upstream request counts, errors, latency, and rate limiting.
 
-These are three separate Railway services (and three resource bills). Railway
-config-as-code configures each service; it does not create the other services.
+This creates four Railway services/resources (eRPC, Redis, Prometheus, and
+Grafana) and associated storage, each with its own Railway cost.
 
 ## Routing and cost behavior
 
-- Selection ranks public endpoints first and paid endpoints second. Within each
-  tier, eRPC scores providers using live performance. File order is not priority.
-- Both tiers remain eligible, so an upstream sweep can reach Alchemy after public
-  transport/RPC failures or unsupported methods. A hard `preferTag` exclusion
-  would prevent that immediate fallback while public nodes remained selected.
+- Selection ranks Alchemy first and public endpoints second. Within each tier,
+  eRPC scores providers using live performance. File order is not priority.
+- Both tiers remain eligible, so an upstream sweep can reach public RPCs after
+  Alchemy transport/RPC failures, circuit-breaker trips, or rate-limit rejection.
+  A hard `preferTag` exclusion would prevent that immediate fallback while
+  Alchemy remained selected.
 - Upstream calls time out after 3s; the total request budget is 30s. Circuit
-  breakers temporarily skip failing upstreams. Many slow public endpoints can
-  consume the total timeout before Alchemy is reached: this prioritizes cost,
-  not guaranteed low latency. Tune timeouts/catalog size for your workload;
-  heavy archive/log queries may need longer upstream timeouts.
+  breakers temporarily skip failing upstreams. Tune timeouts/catalog size for
+  your workload; heavy archive/log queries may need longer upstream timeouts.
 - Speculative hedging is disabled. Valid empty results and application errors
   such as contract reverts do not necessarily trigger another provider call.
-- Startup discovery/block polling can contact Alchemy even without user fallback
-  traffic. Public catalog cold starts or missing public coverage can also route
-  directly to Alchemy. This is not a zero-paid-requests-until-outage guarantee.
+- Alchemy normally receives all cache misses. Public fallbacks can be unreliable
+  or lack archive/method support, so they are an availability fallback rather
+  than a guaranteed equivalent service.
 - The config has fixed **Alchemy Free tier** credit limits: **300 CU/s** and
   **30,000,000 base CUs/month**. They use Alchemy's per-method CU estimates, so
   they are not a request-per-second cap. These limits are shared across all
-  three generated Alchemy chains in this eRPC instance. If you use PAYG or
+  both generated Alchemy chains in this eRPC instance. If you use PAYG or
   Enterprise, replace both figures with your account's allowance.
 - The in-memory limit store is per eRPC instance. Keep one replica for a true
   300-CU/s cap, or use a shared Redis rate-limit store before scaling out.
@@ -127,7 +112,7 @@ Add a static HTTPS upstream to `projects[0].upstreams` for each supported chain:
 ```yaml
 - id: another-provider-base
   endpoint: "${OTHER_BASE_URL}"
-  tags: ["tier:paid", "provider:other"]
+  tags: ["tier:primary", "provider:other"]
   evm:
     chainId: 8453
   rateLimitBudget: other-base
@@ -136,15 +121,18 @@ Add a static HTTPS upstream to `projects[0].upstreams` for each supported chain:
       - overall: 1.0
 ```
 
-Create `other-base` under `rateLimiters.budgets` with its own RPS rule, and set
-`OTHER_BASE_URL` in Railway. Alternatively use a documented `providers` vendor
-with `onlyNetworks` and tagged `overrides`, like the single-key Alchemy entry.
+Create `other-base` under `rateLimiters.budgets` with its own rate-limit rule,
+and set `OTHER_BASE_URL` in Railway. Alternatively use a documented `providers`
+vendor with `onlyNetworks` and tagged `overrides`, like the single-key Alchemy
+entry.
 
-Paid providers compete only after the public tier. Equal multipliers mean
-performance-based ranking, **not an equal traffic split**. Lower `overall` to
-reduce preference for an expensive provider; higher values increase preference
-within its tier. Use provider caps and billing alerts to manage your bill.
-Only genuinely free endpoints should have `tier:public`.
+Additional primary providers compete with Alchemy before the public fallback.
+Equal multipliers mean performance-based ranking, **not an equal traffic split**.
+Lower `overall` to reduce preference for an expensive provider; higher values
+increase preference within its tier. Use provider caps and billing alerts to
+manage your bill.
+Only public fallback endpoints should have `tier:fallback`; Alchemy and any
+additional paid primary provider should use `tier:primary`.
 
 ## Validate changes
 
@@ -157,7 +145,7 @@ docker run --rm --env-file .env erpc-local /erpc-server validate /erpc.yaml
 
 Validation can make live upstream calls; investigate connectivity/chain warnings
 before deployment. Also test an outage in staging to confirm your actual public
-catalog and timeout budget reach the paid fallback as expected.
+catalog and timeout budget reach the public fallback as expected.
 
 References: [Railway](https://docs.erpc.cloud/deployment/railway),
 [selection](https://docs.erpc.cloud/config/projects/selection-policies),
