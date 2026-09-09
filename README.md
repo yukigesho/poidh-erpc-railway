@@ -22,8 +22,8 @@ one Alchemy API key. Pinned to eRPC `0.2.0`.
    creates and manages only eRPC, Redis, Prometheus, Grafana, and their data
    volumes; unrelated project resources are not managed or deleted.
 5. Add a public domain in Railway for eRPC with target port **4000**. Do not
-   expose the metrics port **4001** publicly. Start with one eRPC replica:
-   rate-limit counters are per instance.
+   expose the metrics port **4001** publicly. Start with one eRPC replica and
+   scale only after checking Alchemy and Redis capacity.
 
 Clients in the same Railway environment can use
 `http://erpc.railway.internal:4000/main/evm/42161` (HTTP, not HTTPS).
@@ -89,15 +89,12 @@ Grafana) and associated storage, each with its own Railway cost.
   such as contract reverts do not necessarily trigger another provider call.
 - Alchemy receives every cache miss. If it has an outage or its rate limit is
   reached, uncached requests fail until it recovers.
-- The config uses Alchemy PAYG's documented base throughput of **10,000 CU/s**.
-  It uses Alchemy's per-method CU estimates, so this is not a request-per-second
-  cap. The budget is shared across all three generated Alchemy chains. There is
-  no local monthly cap; configure spending controls and alerts in Alchemy.
-- The in-memory limit store is per eRPC instance. Keep one replica for a true
-  10,000-CU/s cap, or use a shared Redis rate-limit store before scaling out.
-  Usage from other Alchemy apps also counts against account-level throughput
-  and is not visible to eRPC. If the throughput cap is hit, uncached requests
-  fail rather than bypassing it.
+- eRPC does not impose a local Alchemy rate limit. This avoids rejecting Ponder's
+  short `eth_getLogs` bursts with a rigid one-second bucket. Alchemy enforces the
+  actual account-level PAYG throughput across all apps and chains.
+- Configure spending controls and alerts in Alchemy. If Alchemy returns a real
+  capacity limit, uncached requests still fail/retry; then reduce Ponder
+  concurrency or `ethGetLogsBlockRange`, or increase the Alchemy account limit.
 
 ## Add providers later
 

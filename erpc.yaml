@@ -111,14 +111,6 @@ projects:
         overrides:
           "*":
             tags: ["tier:primary", "provider:alchemy"]
-            rateLimitBudget: alchemy-payg
-            # Consume Alchemy's vendor-provided CU estimate, not one token per
-            # request, so expensive methods such as eth_getLogs cost more.
-            rateLimitCountMode: credit
-            rateLimitAutoTune:
-              # Keep the documented PAYG base throughput fixed. Alchemy may
-              # allow elastic bursts, but eRPC stays within the reserved rate.
-              enabled: false
 
     networks:
       - architecture: evm
@@ -133,14 +125,3 @@ projects:
         evm:
           chainId: 8453
         alias: base
-
-# Alchemy PAYG base throughput: 10,000 CU/s.
-# Credit counting pools every method and generated Alchemy upstream into one
-# budget. PAYG has no fixed local monthly cap; configure Alchemy cost controls.
-rateLimiters:
-  budgets:
-    - id: alchemy-payg
-      rules:
-        - method: "*"
-          maxCount: 10000
-          period: second
