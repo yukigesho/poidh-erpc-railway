@@ -32,13 +32,11 @@ database:
         ttl: 2s
 
 server:
-  # One dual-stack listener on Railway/Linux avoids competing port binds.
-  listenV4: false
-  listenV6: true
+  # Railway health checks and private networking connect over IPv4.
+  listenV4: true
+  listenV6: false
   httpHostV4: "0.0.0.0"
-  httpHostV6: "[::]"
   httpPortV4: 4000
-  httpPortV6: 4000
 
 healthCheck:
   mode: simple

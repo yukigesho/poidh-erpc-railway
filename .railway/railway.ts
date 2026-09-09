@@ -26,7 +26,8 @@ export default defineRailway(() => {
       builder: "DOCKERFILE",
       dockerfilePath: "Dockerfile.erpc",
     },
-    healthcheck: "/healthcheck",
+    // A network-scoped probe initializes a provider-generated upstream.
+    healthcheck: "/main/evm/42161/healthcheck?eval=any:initializedUpstreams",
     healthcheckTimeout: 180,
     env: {
       ERPC_AUTH_SECRET: preserve(),
@@ -50,6 +51,8 @@ export default defineRailway(() => {
     healthcheckTimeout: 120,
     env: {
       PORT: "9090",
+      // Railway volumes are root-owned when first mounted.
+      RAILWAY_RUN_UID: "0",
     },
     volumeMounts: {
       "/prometheus": prometheusData,
@@ -66,6 +69,8 @@ export default defineRailway(() => {
     healthcheckTimeout: 120,
     env: {
       PORT: "3000",
+      // Grafana otherwise cannot write to its root-owned Railway volume.
+      RAILWAY_RUN_UID: "0",
       GF_SERVER_HTTP_ADDR: "0.0.0.0",
       GF_SECURITY_ADMIN_USER: "admin",
       // Define this as an environment-level shared Railway variable before
