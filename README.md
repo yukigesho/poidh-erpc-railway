@@ -89,16 +89,15 @@ Grafana) and associated storage, each with its own Railway cost.
   such as contract reverts do not necessarily trigger another provider call.
 - Alchemy receives every cache miss. If it has an outage or its rate limit is
   reached, uncached requests fail until it recovers.
-- The config has fixed **Alchemy Free tier** credit limits: **300 CU/s** and
-  **30,000,000 base CUs/month**. They use Alchemy's per-method CU estimates, so
-  they are not a request-per-second cap. These limits are shared across all
-  all three generated Alchemy chains in this eRPC instance. If you use PAYG or
-  Enterprise, replace both figures with your account's allowance.
+- The config uses Alchemy PAYG's documented base throughput of **10,000 CU/s**.
+  It uses Alchemy's per-method CU estimates, so this is not a request-per-second
+  cap. The budget is shared across all three generated Alchemy chains. There is
+  no local monthly cap; configure spending controls and alerts in Alchemy.
 - The in-memory limit store is per eRPC instance. Keep one replica for a true
-  300-CU/s cap, or use a shared Redis rate-limit store before scaling out.
+  10,000-CU/s cap, or use a shared Redis rate-limit store before scaling out.
   Usage from other Alchemy apps also counts against account-level throughput
-  and is not visible to eRPC, so retain Alchemy billing alerts. If either limit
-  is hit, uncached requests fail rather than bypassing it.
+  and is not visible to eRPC. If the throughput cap is hit, uncached requests
+  fail rather than bypassing it.
 
 ## Add providers later
 
