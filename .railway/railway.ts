@@ -25,9 +25,6 @@ export default defineRailway(() => {
       builder: "DOCKERFILE",
       dockerfilePath: "Dockerfile.erpc",
     },
-    // eRPC's provider-safe liveness/readiness evaluation (no live RPC call).
-    healthcheck: "/healthcheck",
-    healthcheckTimeout: 180,
     env: {
       // Define these sealed values once as shared Railway variables.
       ERPC_AUTH_SECRET: "${{shared.ERPC_AUTH_SECRET}}",

@@ -39,9 +39,8 @@ curl "https://YOUR-DOMAIN/main/evm/42161" \
 
 Authentication is required even on the private network. Keep this secret in
 backend services, not browser bundles. Browser access needs a separate auth/CORS
-strategy. Railway uses `/healthcheck`, with eRPC's provider-safe
-`all:activeUpstreams` evaluation: it confirms eRPC is running/configured without
-a live Alchemy RPC call. The endpoint remains unauthenticated for diagnostics.
+strategy. `/healthcheck` remains unauthenticated for manual diagnostics.
+Railway does not run an eRPC deployment health check.
 
 ## Caching
 
