@@ -31,17 +31,17 @@ database:
         finality: realtime
         ttl: 2s
 
+healthCheck:
+  mode: simple
+  # Provider-only projects pass without forcing a live upstream RPC call.
+  defaultEval: "all:activeUpstreams"
+
 server:
   # Railway health checks and private networking connect over IPv4.
   listenV4: true
   listenV6: false
   httpHostV4: "0.0.0.0"
   httpPortV4: 4000
-
-healthCheck:
-  mode: simple
-  # Alchemy may be healthy while the optional public repository is rate-limited.
-  defaultEval: "any:evm:eth_chainId"
 
 metrics:
   enabled: true
@@ -61,19 +61,11 @@ projects:
       selectionPolicy:
         evalInterval: 15s
         evalScope: network-method
-        # Keep BOTH tiers eligible: preferTag would remove public fallbacks
-        # while Alchemy remains healthy, preventing immediate failover.
-        # Rank within each tier, but never let fallback latency outrank Alchemy.
+        # Alchemy is the sole provider; select its healthiest upstream first.
         evalFunc: |
-          (upstreams, ctx) => {
-            const ranked = upstreams.removeCordoned()
-              .sortByScore(PREFER_FASTEST);
-            const primaryNodes = ranked.filter(
-              u => !u.tags.includes('tier:fallback'));
-            const fallbackNodes = ranked.filter(
-              u => u.tags.includes('tier:fallback'));
-            return primaryNodes.concat(fallbackNodes);
-          }
+          (upstreams, ctx) => upstreams
+            .removeCordoned()
+            .sortByScore(PREFER_FASTEST)
       failsafe:
         - matchMethod: "*"
           timeout:
@@ -106,23 +98,13 @@ projects:
             successThresholdCapacity: 3
 
     providers:
-      - id: public-repo
-        vendor: repository
-        settings:
-          repositoryUrl: https://evm-public-endpoints.erpc.cloud
-        onlyNetworks:
-          - evm:42161
-          - evm:8453
-        overrides:
-          "*":
-            tags: ["tier:fallback", "provider:public"]
-
       # eRPC generates each chain's Alchemy URL from this single API key.
       - id: alchemy
         vendor: alchemy
         settings:
           apiKey: "${ALCHEMY_API_KEY}"
         onlyNetworks:
+          - evm:1
           - evm:42161
           - evm:8453
         overrides:
@@ -138,6 +120,10 @@ projects:
               enabled: false
 
     networks:
+      - architecture: evm
+        evm:
+          chainId: 1
+        alias: mainnet
       - architecture: evm
         evm:
           chainId: 42161

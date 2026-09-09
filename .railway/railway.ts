@@ -25,8 +25,8 @@ export default defineRailway(() => {
       builder: "DOCKERFILE",
       dockerfilePath: "Dockerfile.erpc",
     },
-    // Require one live Arbitrum upstream, not every optional public fallback.
-    healthcheck: "/main/evm/42161/healthcheck?eval=any:evm:eth_chainId",
+    // eRPC's provider-safe liveness/readiness evaluation (no live RPC call).
+    healthcheck: "/healthcheck",
     healthcheckTimeout: 180,
     env: {
       // Define these sealed values once as shared Railway variables.
