@@ -1,6 +1,6 @@
-FROM ghcr.io/erpc/erpc:latest
+FROM ghcr.io/erpc/erpc:0.2.0
 
-COPY erpc.yaml /root/erpc.yaml
+COPY erpc.yaml /erpc.yaml
 # 4000 -> eRPC
 # 4001 -> Monitoring
 EXPOSE 4000 4001

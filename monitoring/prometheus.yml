@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: erpc
+    metrics_path: /metrics
+    static_configs:
+      # Name the Railway RPC service "erpc", or change this hostname.
+      - targets: ["erpc.railway.internal:4001"]

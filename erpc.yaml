@@ -1,9 +1,48 @@
 logLevel: info
 
+# Redis persists this small cache across eRPC/indexer restarts. In Railway, set
+# REDIS_URL as a reference to the private Redis service's REDIS_URL variable.
+database:
+  evmJsonRpcCache:
+    connectors:
+      - id: cache-redis
+        driver: redis
+        redis:
+          uri: "${REDIS_URL}"
+    policies:
+      # Immutable historical/indexer data: retain only one day to keep Redis
+      # bounded while covering ordinary indexer restarts and re-runs.
+      - connector: cache-redis
+        method: "eth_get*|eth_query*"
+        finality: finalized
+        ttl: 24h
+      # Transaction/hash lookups have no reliable finality reference.
+      - connector: cache-redis
+        method: "eth_getTransactionByHash|eth_getTransactionReceipt"
+        finality: unknown
+        ttl: 24h
+      # Do not preserve potentially reorgable or tip-of-chain values long.
+      - connector: cache-redis
+        method: "eth_get*|eth_query*"
+        finality: unfinalized
+        ttl: 15s
+      - connector: cache-redis
+        method: "eth_blockNumber|eth_gasPrice|eth_feeHistory"
+        finality: realtime
+        ttl: 2s
+
 server:
+  # One dual-stack listener on Railway/Linux avoids competing port binds.
+  listenV4: false
+  listenV6: true
   httpHostV4: "0.0.0.0"
   httpHostV6: "[::]"
-  httpPort: 4000
+  httpPortV4: 4000
+  httpPortV6: 4000
+
+healthCheck:
+  mode: simple
+  defaultEval: "any:initializedUpstreams"
 
 metrics:
   enabled: true
@@ -13,91 +52,118 @@ metrics:
 
 projects:
   - id: main
+    auth:
+      strategies:
+        - type: secret
+          secret:
+            value: "${ERPC_AUTH_SECRET}"
+
+    networkDefaults:
+      selectionPolicy:
+        evalInterval: 15s
+        evalScope: network-method
+        # Keep BOTH tiers eligible: preferTag would remove paid upstreams
+        # while any public upstream remains, preventing immediate failover.
+        # Rank within each tier, but never let paid latency outrank public.
+        evalFunc: |
+          (upstreams, ctx) => {
+            const ranked = upstreams.removeCordoned()
+              .sortByScore(PREFER_FASTEST);
+            const publicNodes = ranked.filter(
+              u => u.tags.includes('tier:public'));
+            const paidNodes = ranked.filter(
+              u => !u.tags.includes('tier:public'));
+            return publicNodes.concat(paidNodes);
+          }
+      failsafe:
+        - matchMethod: "*"
+          timeout:
+            duration: 30s
+          retry:
+            maxAttempts: 2
+            delay: 200ms
+            jitter: 100ms
+            backoffFactor: 1.5
+            backoffMaxDelay: 2s
+          # No speculative paid requests while a public call is in flight.
+          hedge:
+            maxCount: 0
 
     upstreamDefaults:
       jsonRpc:
-        supportsBatch: true
-        batchMaxSize: 10
-        batchMaxWait: 50ms
+        # Public endpoints do not consistently support batching.
+        supportsBatch: false
       failsafe:
-        timeout:
-          duration: 15s
-        retry:
-          maxAttempts: 2
-          delay: 300ms
-          jitter: 100ms
-          backoffMaxDelay: 5s
-          backoffFactor: 1.5
-        circuitBreaker:
-          failureThresholdCount: 160
-          failureThresholdCapacity: 200
-          halfOpenAfter: 5m
-          successThresholdCount: 3
-          successThresholdCapacity: 10
+        - matchMethod: "*"
+          timeout:
+            duration: 3s
+          retry:
+            maxAttempts: 1
+          circuitBreaker:
+            failureThresholdCount: 5
+            failureThresholdCapacity: 10
+            halfOpenAfter: 30s
+            successThresholdCount: 2
+            successThresholdCapacity: 3
 
-    upstreams:
-      - id: alchemy-arbitrum
-        group: fallback
-        endpoint: ${ALCHEMY_ARBITRUM_URL}
-        evm:
-          chainId: 42161
-        rateLimitBudget: alchemy-arbitrum
-
+    providers:
       - id: public-repo
-        endpoint: repository://evm-public-endpoints.erpc.cloud
+        vendor: repository
+        settings:
+          repositoryUrl: https://evm-public-endpoints.erpc.cloud
+        onlyNetworks:
+          - evm:42161
+          - evm:8453
+          - evm:666666666
+        overrides:
+          "*":
+            tags: ["tier:public"]
 
-      - id: alchemy-base
-        group: fallback
-        endpoint: ${ALCHEMY_BASE_URL}
-        evm:
-          chainId: 8453
-        rateLimitBudget: alchemy-base
-
-      - id: alchemy-degen
-        group: fallback
-        endpoint: ${ALCHEMY_DEGEN_URL}
-        evm:
-          chainId: 666666666
-        rateLimitBudget: alchemy-degen
+      # eRPC generates each chain's Alchemy URL from this single API key.
+      - id: alchemy
+        vendor: alchemy
+        settings:
+          apiKey: "${ALCHEMY_API_KEY}"
+        onlyNetworks:
+          - evm:42161
+          - evm:8453
+          - evm:666666666
+        overrides:
+          "*":
+            tags: ["tier:paid", "provider:alchemy"]
+            rateLimitBudget: alchemy-free-tier
+            # Consume Alchemy's vendor-provided CU estimate, not one token per
+            # request, so expensive methods such as eth_getLogs cost more.
+            rateLimitCountMode: credit
+            rateLimitAutoTune:
+              # Keep documented plan limits fixed; automatic growth beyond 300
+              # CU/s could exceed the account's allowance.
+              enabled: false
 
     networks:
       - architecture: evm
         evm:
           chainId: 42161
         alias: arbitrum
-        selectionPolicy:
-          evalInterval: 1m
-
       - architecture: evm
         evm:
           chainId: 8453
         alias: base
-        selectionPolicy:
-          evalInterval: 1m
-
       - architecture: evm
         evm:
           chainId: 666666666
         alias: degen
-        selectionPolicy:
-          evalInterval: 1m
 
+# Alchemy Free tier: 300 CU/s and 30,000,000 base CUs/month.
+# Credit counting pools every method and every generated Alchemy upstream into
+# one budget. Change these values only if the Alchemy plan changes.
 rateLimiters:
   budgets:
-    - id: alchemy-arbitrum
+    - id: alchemy-free-tier
       rules:
         - method: "*"
-          maxCount: ${ALCHEMY_ARBITRUM_RPS}
-          period: 1s
-
-    - id: alchemy-base
-      rules:
+          maxCount: 300
+          period: second
         - method: "*"
-          maxCount: ${ALCHEMY_BASE_RPS}
-          period: 1s
-
-    - id: alchemy-degen
-      rules:
-        - method: "*"
-          maxCount: ${ALCHEMY_DEGEN_RPS}
-          period: 1s
+          maxCount: 30000000
+          period: month
