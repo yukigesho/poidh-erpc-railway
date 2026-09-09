@@ -25,8 +25,8 @@ export default defineRailway(() => {
       builder: "DOCKERFILE",
       dockerfilePath: "Dockerfile.erpc",
     },
-    // A network-scoped probe initializes a provider-generated upstream.
-    healthcheck: "/main/evm/42161/healthcheck?eval=any:initializedUpstreams",
+    // Require one live Arbitrum upstream, not every optional public fallback.
+    healthcheck: "/main/evm/42161/healthcheck?eval=any:evm:eth_chainId",
     healthcheckTimeout: 180,
     env: {
       // Define these sealed values once as shared Railway variables.

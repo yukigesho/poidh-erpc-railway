@@ -40,7 +40,8 @@ server:
 
 healthCheck:
   mode: simple
-  defaultEval: "any:initializedUpstreams"
+  # Alchemy may be healthy while the optional public repository is rate-limited.
+  defaultEval: "any:evm:eth_chainId"
 
 metrics:
   enabled: true
