@@ -8,10 +8,10 @@ and public repository RPCs as fallback. Pinned to eRPC `0.2.0`.
 1. Install Railway CLI `>=5.42.1`, authenticate, and link this directory to
    the target Railway project/environment. Install the IaC dependency with
    `npm ci`.
-2. In Railway, set the existing **erpc** service's `ERPC_AUTH_SECRET` and
-   `ALCHEMY_API_KEY`. IaC preserves these values during migration; it never
-   writes them to Git. Also create the environment-level shared secret
-   `GRAFANA_ADMIN_PASSWORD` before the first apply.
+2. In Railway **Project → Variables**, create sealed environment-level shared
+   variables: `ERPC_AUTH_SECRET`, `ALCHEMY_API_KEY`, and
+   `GRAFANA_ADMIN_PASSWORD`. IaC references these values without writing them
+   to Git. `ERPC_AUTH_SECRET` must be non-empty or eRPC cannot start.
 3. **Migration only:** before planning, clear the existing service's Railway
    **Config File path** setting. The deprecated `railway.toml` files have been
    removed from this repository. Do not let Config as Code and IaC manage the

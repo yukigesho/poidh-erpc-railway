@@ -2,7 +2,6 @@ import {
   defineRailway,
   github,
   image,
-  preserve,
   project,
   redis,
   service,
@@ -30,8 +29,9 @@ export default defineRailway(() => {
     healthcheck: "/main/evm/42161/healthcheck?eval=any:initializedUpstreams",
     healthcheckTimeout: 180,
     env: {
-      ERPC_AUTH_SECRET: preserve(),
-      ALCHEMY_API_KEY: preserve(),
+      // Define these sealed values once as shared Railway variables.
+      ERPC_AUTH_SECRET: "${{shared.ERPC_AUTH_SECRET}}",
+      ALCHEMY_API_KEY: "${{shared.ALCHEMY_API_KEY}}",
       REDIS_URL: cache.env.REDIS_URL,
       GOMEMLIMIT: "460MiB",
     },
