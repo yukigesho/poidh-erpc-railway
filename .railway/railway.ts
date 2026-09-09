@@ -50,6 +50,7 @@ export default defineRailway(() => {
     healthcheckTimeout: 120,
     env: {
       PORT: "9090",
+      RAILWAY_RUN_UID: "0",
     },
     volumeMounts: {
       "/prometheus": prometheusData,
