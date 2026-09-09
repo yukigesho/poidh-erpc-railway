@@ -18,8 +18,9 @@ and public repository RPCs as fallback. Pinned to eRPC `0.2.0`.
    same service. For a larger existing project, run `railway config pull` first
    and merge its imported settings before applying.
 4. Preview with `railway config plan`, carefully review it, then run
-   `railway config apply`. The single `.railway/railway.ts` file creates and
-   manages eRPC, Redis, Prometheus, Grafana, and their data volumes.
+   `railway config apply`. This is a named `erpc-monitoring` IaC partial: it
+   creates and manages only eRPC, Redis, Prometheus, Grafana, and their data
+   volumes; unrelated project resources are not managed or deleted.
 5. Add a public domain in Railway for eRPC with target port **4000**. Do not
    expose the metrics port **4001** publicly. Start with one eRPC replica:
    rate-limit counters are per instance.

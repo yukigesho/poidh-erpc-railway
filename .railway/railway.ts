@@ -11,6 +11,10 @@ import {
 
 const repository = "yukigesho/poidh-erpc-railway";
 
+// This repository owns only the eRPC/monitoring stack, not the whole project.
+// Keep this stable: Railway scopes this partial's ownership to its own resources.
+export const partial = "erpc-monitoring";
+
 export default defineRailway(() => {
   const cache = redis("redis");
   const prometheusData = volume("prometheus-data", { sizeMB: 1024 });
