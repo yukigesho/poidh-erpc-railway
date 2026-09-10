@@ -81,7 +81,7 @@ Grafana) and associated storage, each with its own Railway cost.
 
 ### Ponder indexer monitoring
 
-Prometheus also scrapes `http://indexer.railway.internal:42069/metrics` every
+Prometheus also scrapes `http://poidh-indexer.railway.internal:42069/metrics` every
 15 seconds. Before deploying, confirm the indexer's private DNS name and port
 in `monitoring/prometheus.yml`. On the indexer service, set `PORT=42069` and
 start with:
