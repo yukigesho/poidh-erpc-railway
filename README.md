@@ -79,6 +79,74 @@ procedure.
 This creates four Railway services/resources (eRPC, Redis, Prometheus, and
 Grafana) and associated storage, each with its own Railway cost.
 
+### Ponder indexer monitoring
+
+Prometheus also scrapes `http://indexer.railway.internal:42069/metrics` every
+15 seconds. Before deploying, confirm the indexer's private DNS name and port
+in `monitoring/prometheus.yml`. On the indexer service, set `PORT=42069` and
+start with:
+
+```bash
+pnpm start --schema=$RAILWAY_DEPLOYMENT_ID --views-schema=public --hostname :: --port 42069
+```
+
+Keep `DATABASE_SCHEMA=public` for off-chain tables; the CLI flags preserve
+Ponder's deployment-specific schema and stable public views. Keep metrics
+private. This IaC partial does not manage or create the indexer service.
+
+Redeploy **Prometheus** to load the updated config and bundled
+`ponder-alerts.yml`. Verify `up{job="ponder"}` is `1`, then inspect these queries
+in Grafana Explore using the existing Prometheus datasource:
+
+```promql
+# Seconds behind wall clock, per chain (base, arbitrum, main)
+time() - ponder_sync_block_timestamp{job="ponder"}
+time() - ponder_indexing_timestamp{job="ponder"}
+
+# Handler backlog relative to fetched blocks
+ponder_sync_block_timestamp{job="ponder"} - ponder_indexing_timestamp{job="ponder"}
+
+# RPC errors per second
+rate(ponder_rpc_request_error_total{job="ponder"}[5m])
+```
+
+Metric names are checked against **Ponder 0.17.10**, not older dashboard names.
+`monitoring/ponder-alerts.yml` provides:
+
+- `PonderUnavailable`: failed scrapes for 2 minutes;
+- `PonderSyncLag`: synced timestamp over 120 seconds old for 5 minutes;
+- `PonderIndexingLag`: indexing over 120 seconds behind sync for 5 minutes.
+
+Lag rules are gated on successful scrapes and realtime sync mode. They do not
+fire while RPC sync is historical; handler backlog can still alert during
+catch-up after RPC sync reaches realtime. Adjust thresholds to observed load.
+These are progress alerts, not notifications based on how often contracts emit
+events, and do not automatically restart services.
+
+**Notification delivery is not configured.** Prometheus will expose pending
+and firing alerts on its private `/alerts` page and through the `ALERTS` metric.
+To receive Telegram/email/etc., configure Alertmanager and its Prometheus
+receiver, or create Grafana-managed alert rules using the same expressions and
+pending periods, then assign a Grafana contact point. Prometheus rules are not
+automatically routed through Grafana contact points. Railway's deployment
+healthcheck is not continuous progress monitoring.
+
+Validate config and alert behavior from this repository (replace `docker` with
+`podman` if needed; on SELinux, add `--security-opt label=disable` for the
+read-only bind mount):
+
+```bash
+docker run --rm --network none \
+  -v "$PWD/monitoring:/etc/prometheus:ro" -w /etc/prometheus \
+  --entrypoint /bin/promtool prom/prometheus:v3.9.1 \
+  check config /etc/prometheus/prometheus.yml
+
+docker run --rm --network none \
+  -v "$PWD/monitoring:/etc/prometheus:ro" -w /etc/prometheus \
+  --entrypoint /bin/promtool prom/prometheus:v3.9.1 \
+  test rules ponder-alerts.test.yml
+```
+
 ## Routing and cost behavior
 
 - Alchemy is the only upstream provider for all three chains. eRPC uses its

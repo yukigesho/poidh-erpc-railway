@@ -1,0 +1,129 @@
+rule_files:
+  - ponder-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: healthy chain does not alert
+    interval: 1m
+    input_series:
+      - series: 'up{job="ponder",instance="indexer:42069"}'
+        values: '1+0x10'
+      - series: 'ponder_sync_is_realtime{job="ponder",instance="indexer:42069",chain="base"}'
+        values: '1+0x10'
+      - series: 'ponder_sync_block_timestamp{job="ponder",instance="indexer:42069",chain="base"}'
+        values: '0+60x10'
+      - series: 'ponder_indexing_timestamp{job="ponder",instance="indexer:42069",chain="base"}'
+        values: '0+60x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PonderSyncLag
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: PonderIndexingLag
+        exp_alerts: []
+
+  - name: historical sync suppresses lag alerts
+    interval: 1m
+    input_series:
+      - series: 'up{job="ponder",instance="indexer:42069"}'
+        values: '1+0x10'
+      - series: 'ponder_sync_is_realtime{job="ponder",instance="indexer:42069",chain="main"}'
+        values: '0+0x10'
+      - series: 'ponder_sync_block_timestamp{job="ponder",instance="indexer:42069",chain="main"}'
+        values: '180+0x10'
+      - series: 'ponder_indexing_timestamp{job="ponder",instance="indexer:42069",chain="main"}'
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PonderSyncLag
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: PonderIndexingLag
+        exp_alerts: []
+
+  - name: stalled RPC sync alerts after grace period
+    interval: 1m
+    input_series:
+      - series: 'up{job="ponder",instance="indexer:42069"}'
+        values: '1+0x10'
+      - series: 'ponder_sync_is_realtime{job="ponder",instance="indexer:42069",chain="arbitrum"}'
+        values: '1+0x10'
+      - series: 'ponder_sync_block_timestamp{job="ponder",instance="indexer:42069",chain="arbitrum"}'
+        values: '0+0x10'
+      - series: 'ponder_indexing_timestamp{job="ponder",instance="indexer:42069",chain="arbitrum"}'
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PonderSyncLag
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: PonderSyncLag
+        exp_alerts:
+          - exp_labels:
+              job: ponder
+              instance: indexer:42069
+              chain: arbitrum
+              severity: warning
+            exp_annotations:
+              summary: "Ponder sync is behind on arbitrum"
+              description: "Synced block timestamp is over 120 seconds old for 5 minutes. Compare eRPC with an independent chain head and inspect RPC failures."
+      - eval_time: 10m
+        alertname: PonderIndexingLag
+        exp_alerts: []
+
+  - name: handlers lag while sync keeps advancing
+    interval: 1m
+    input_series:
+      - series: 'up{job="ponder",instance="indexer:42069"}'
+        values: '1+0x10'
+      - series: 'ponder_sync_is_realtime{job="ponder",instance="indexer:42069",chain="base"}'
+        values: '1+0x10'
+      - series: 'ponder_sync_block_timestamp{job="ponder",instance="indexer:42069",chain="base"}'
+        values: '0+60x10'
+      - series: 'ponder_indexing_timestamp{job="ponder",instance="indexer:42069",chain="base"}'
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PonderSyncLag
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: PonderIndexingLag
+        exp_alerts:
+          - exp_labels:
+              job: ponder
+              instance: indexer:42069
+              chain: base
+              severity: warning
+            exp_annotations:
+              summary: "Ponder handlers are behind on base"
+              description: "Indexing is over 120 seconds behind fetched blocks for 5 minutes. Inspect handler errors, off-chain writes, and PostgreSQL locks/connections."
+
+  - name: unavailable target alerts without duplicate lag alerts
+    interval: 1m
+    input_series:
+      - series: 'up{job="ponder",instance="indexer:42069"}'
+        values: '0+0x10'
+      - series: 'ponder_sync_is_realtime{job="ponder",instance="indexer:42069",chain="base"}'
+        values: '1+0x10'
+      - series: 'ponder_sync_block_timestamp{job="ponder",instance="indexer:42069",chain="base"}'
+        values: '180+0x10'
+      - series: 'ponder_indexing_timestamp{job="ponder",instance="indexer:42069",chain="base"}'
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: PonderUnavailable
+        exp_alerts:
+          - exp_labels:
+              job: ponder
+              instance: indexer:42069
+              severity: critical
+            exp_annotations:
+              summary: "Ponder metrics endpoint unavailable"
+              description: "Cannot scrape indexer:42069 for 2 minutes. Check the process, private hostname, port, and bind address."
+      - eval_time: 10m
+        alertname: PonderSyncLag
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: PonderIndexingLag
+        exp_alerts: []

@@ -1,0 +1,37 @@
+groups:
+  - name: ponder
+    rules:
+      - alert: PonderUnavailable
+        expr: up{job="ponder"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Ponder metrics endpoint unavailable"
+          description: "Cannot scrape {{ $labels.instance }} for 2 minutes. Check the process, private hostname, port, and bind address."
+
+      # Ponder 0.17.10 metric names; do not use the older realtime_* names.
+      # Suppress lag alerts during historical sync and when scrapes fail.
+      - alert: PonderSyncLag
+        expr: |
+          (time() - ponder_sync_block_timestamp{job="ponder"} > 120)
+          and on (job, instance, chain) (ponder_sync_is_realtime{job="ponder"} == 1)
+          and on (job, instance) (up{job="ponder"} == 1)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ponder sync is behind on {{ $labels.chain }}"
+          description: "Synced block timestamp is over 120 seconds old for 5 minutes. Compare eRPC with an independent chain head and inspect RPC failures."
+
+      - alert: PonderIndexingLag
+        expr: |
+          (ponder_sync_block_timestamp{job="ponder"} - ponder_indexing_timestamp{job="ponder"} > 120)
+          and on (job, instance, chain) (ponder_sync_is_realtime{job="ponder"} == 1)
+          and on (job, instance) (up{job="ponder"} == 1)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Ponder handlers are behind on {{ $labels.chain }}"
+          description: "Indexing is over 120 seconds behind fetched blocks for 5 minutes. Inspect handler errors, off-chain writes, and PostgreSQL locks/connections."
